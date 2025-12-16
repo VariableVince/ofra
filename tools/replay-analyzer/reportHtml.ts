@@ -93,16 +93,16 @@ export function reportHtml(d3Source: string, report: ReplayPerfReport): string {
           <div id="chart-gold-earned-trade" class="chart"></div>
         </div>
         <div class="card">
+          <h2>Gold earned: rail/trains (cumulative)</h2>
+          <div id="chart-gold-earned-train" class="chart"></div>
+        </div>
+        <div class="card">
           <h2>Gold earned: conquest/war (cumulative)</h2>
           <div id="chart-gold-earned-conquer" class="chart"></div>
         </div>
         <div class="card">
-          <h2>Gold earned: rail/other (residual) (cumulative)</h2>
+          <h2>Gold earned: other (residual) (cumulative)</h2>
           <div id="chart-gold-earned-other" class="chart"></div>
-        </div>
-        <div class="card">
-          <h2>Gold spent/lost (cumulative)</h2>
-          <div id="chart-gold-spent-total" class="chart"></div>
         </div>
       </div>
 
@@ -130,8 +130,9 @@ export function reportHtml(d3Source: string, report: ReplayPerfReport): string {
                 <th>Gold (end)</th>
                 <th>Earned (total)</th>
                 <th>Earned (trade)</th>
+                <th>Earned (rail)</th>
                 <th>Earned (conquer)</th>
-                <th>Earned (rail/other)</th>
+                <th>Earned (other)</th>
                 <th>Spent (total)</th>
                 <th>Lost (conquest)</th>
                 <th>Earned (replay)</th>
@@ -455,6 +456,7 @@ export function reportHtml(d3Source: string, report: ReplayPerfReport): string {
             "<td class='mono'>" + p.gold + "</td>" +
             "<td class='mono'>" + (p.goldEarnedTotal ?? "—") + "</td>" +
             "<td class='mono'>" + (p.goldEarnedTradeTotal ?? "—") + "</td>" +
+            "<td class='mono'>" + (p.goldEarnedTrainTotal ?? "—") + "</td>" +
             "<td class='mono'>" + (p.goldEarnedConquerTotal ?? "—") + "</td>" +
             "<td class='mono'>" + (p.goldEarnedOtherTotal ?? "—") + "</td>" +
             "<td class='mono'>" + (p.goldSpentTotal ?? "—") + "</td>" +
@@ -520,6 +522,7 @@ export function reportHtml(d3Source: string, report: ReplayPerfReport): string {
           }));
 
           renderMultiLineChart("chart-gold-earned-trade", econ.turns, mkLines("earnedTrade", econ.top.earnedTrade), {});
+          renderMultiLineChart("chart-gold-earned-train", econ.turns, mkLines("earnedTrain", econ.top.earnedTrain), {});
           renderMultiLineChart("chart-gold-earned-conquer", econ.turns, mkLines("earnedConquer", econ.top.earnedConquer), {});
           renderMultiLineChart("chart-gold-earned-other", econ.turns, mkLines("earnedOther", econ.top.earnedOther), {});
           renderMultiLineChart("chart-gold-spent-total", econ.turns, mkLines("spentTotal", econ.top.spentTotal), {});

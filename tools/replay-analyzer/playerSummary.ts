@@ -53,6 +53,12 @@ export function summarizePlayers(
         const totals = economyTotalsByClientId.get(cid);
         return totals ? totals.earnedTrade.toString() : null;
       })(),
+      goldEarnedTrainTotal: (() => {
+        const cid = p.clientID();
+        if (!cid) return null;
+        const totals = economyTotalsByClientId.get(cid);
+        return totals ? totals.earnedTrain.toString() : null;
+      })(),
       goldEarnedConquerTotal: (() => {
         const cid = p.clientID();
         if (!cid) return null;

@@ -24,6 +24,7 @@ export type PlayerSummary = {
   goldSpentTotal: string | null;
   goldLostConquestTotal: string | null;
   goldEarnedTradeTotal: string | null;
+  goldEarnedTrainTotal: string | null;
   goldEarnedConquerTotal: string | null;
   goldEarnedOtherTotal: string | null;
   goldEarnedReplayTotal: string | null;
@@ -32,6 +33,7 @@ export type PlayerSummary = {
 
 export type EconomyPlayerSeries = {
   earnedTrade: number[];
+  earnedTrain: number[];
   earnedConquer: number[];
   earnedOther: number[];
   spentTotal: number[];
@@ -42,6 +44,7 @@ export type EconomyPlayerSeries = {
 export type EconomyTotals = {
   earnedTotal: bigint;
   earnedTrade: bigint;
+  earnedTrain: bigint;
   earnedConquer: bigint;
   earnedOther: bigint;
   spentTotal: bigint;
@@ -56,6 +59,7 @@ export type EconomyReport = {
   seriesByClientId: Record<string, EconomyPlayerSeries>;
   top: {
     earnedTrade: string[];
+    earnedTrain: string[];
     earnedConquer: string[];
     earnedOther: string[];
     spentTotal: string[];

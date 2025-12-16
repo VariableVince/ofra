@@ -1,25 +1,26 @@
 import type { EconomyReport, EconomyTotals } from "./types";
 import { asBigInt, bigintToNumberSafe, minBigInt } from "./utils";
 
-type GoldStats = { work: bigint; war: bigint; trade: bigint; steal: bigint };
+type GoldStats = { work: bigint; war: bigint; trade: bigint; steal: bigint; train: bigint };
 
 function readGoldStatsForClient(allPlayersStats: any, clientID: string): GoldStats {
   const ps = allPlayersStats?.[clientID];
   const gold = ps?.gold;
   if (!Array.isArray(gold)) {
-    return { work: 0n, war: 0n, trade: 0n, steal: 0n };
+    return { work: 0n, war: 0n, trade: 0n, steal: 0n, train: 0n };
   }
   return {
     work: asBigInt(gold[0]) ?? 0n,
     war: asBigInt(gold[1]) ?? 0n,
     trade: asBigInt(gold[2]) ?? 0n,
     steal: asBigInt(gold[3]) ?? 0n,
+    train: asBigInt(gold[4]) ?? 0n,
   };
 }
 
 function topEconomyClientIds(
   totalsByClientId: ReadonlyMap<string, EconomyTotals>,
-  metric: "earnedTrade" | "earnedConquer" | "earnedOther" | "spentTotal",
+  metric: "earnedTrade" | "earnedTrain" | "earnedConquer" | "earnedOther" | "spentTotal",
   n: number,
 ): string[] {
   return [...totalsByClientId.entries()]
@@ -44,17 +45,7 @@ export function createEconomyTracker(opts: { sampleEveryTurns: number; topN: num
   const totalsByClientId = new Map<string, EconomyTotals>();
   const turns: number[] = [];
   const players: { clientID: string; displayName: string }[] = [];
-  const seriesByClientId: Record<
-    string,
-    {
-      earnedTrade: number[];
-      earnedConquer: number[];
-      earnedOther: number[];
-      spentTotal: number[];
-      spentOther: number[];
-      lostConquest: number[];
-    }
-  > = {};
+  const seriesByClientId: Record<string, EconomyPlayerSeries> = {};
 
   const playerByClientId = new Map<string, any>();
   const prevGoldByClientId = new Map<string, bigint>();
@@ -69,6 +60,7 @@ export function createEconomyTracker(opts: { sampleEveryTurns: number; topN: num
     players.push({ clientID: cid, displayName: p.displayName() });
     seriesByClientId[cid] = {
       earnedTrade: [],
+      earnedTrain: [],
       earnedConquer: [],
       earnedOther: [],
       spentTotal: [],
@@ -78,6 +70,7 @@ export function createEconomyTracker(opts: { sampleEveryTurns: number; topN: num
     totalsByClientId.set(cid, {
       earnedTotal: 0n,
       earnedTrade: 0n,
+      earnedTrain: 0n,
       earnedConquer: 0n,
       earnedOther: 0n,
       spentTotal: 0n,
@@ -86,7 +79,7 @@ export function createEconomyTracker(opts: { sampleEveryTurns: number; topN: num
     });
     playerByClientId.set(cid, p);
     prevGoldByClientId.set(cid, p.gold());
-    prevGoldStatsByClientId.set(cid, { work: 0n, war: 0n, trade: 0n, steal: 0n });
+    prevGoldStatsByClientId.set(cid, { work: 0n, war: 0n, trade: 0n, steal: 0n, train: 0n });
   }
 
   return {
@@ -134,8 +127,9 @@ export function createEconomyTracker(opts: { sampleEveryTurns: number; topN: num
         const dWar = currGoldStats.war > prevGoldStats.war ? (currGoldStats.war - prevGoldStats.war) : 0n;
         const dTrade = currGoldStats.trade > prevGoldStats.trade ? (currGoldStats.trade - prevGoldStats.trade) : 0n;
         const dSteal = currGoldStats.steal > prevGoldStats.steal ? (currGoldStats.steal - prevGoldStats.steal) : 0n;
+        const dTrain = currGoldStats.train > prevGoldStats.train ? (currGoldStats.train - prevGoldStats.train) : 0n;
 
-        const deltaKnownEarned = dWork + dWar + dTrade + dSteal;
+        const deltaKnownEarned = dWork + dWar + dTrade + dSteal + dTrain;
         const residual = deltaBalance - deltaKnownEarned;
         const deltaEarnedOther = residual > 0n ? residual : 0n;
         const deltaOutflow = residual < 0n ? -residual : 0n;
@@ -147,6 +141,7 @@ export function createEconomyTracker(opts: { sampleEveryTurns: number; topN: num
         const totals = totalsByClientId.get(cid);
         if (totals) {
           totals.earnedTrade += dTrade;
+          totals.earnedTrain += dTrain;
           totals.earnedConquer += dWar;
           totals.earnedOther += deltaEarnedOther;
           totals.earnedTotal += deltaKnownEarned + deltaEarnedOther;
@@ -167,6 +162,7 @@ export function createEconomyTracker(opts: { sampleEveryTurns: number; topN: num
           const series = seriesByClientId[cid];
           if (!totals || !series) continue;
           series.earnedTrade.push(bigintToNumberSafe(totals.earnedTrade));
+          series.earnedTrain.push(bigintToNumberSafe(totals.earnedTrain));
           series.earnedConquer.push(bigintToNumberSafe(totals.earnedConquer));
           series.earnedOther.push(bigintToNumberSafe(totals.earnedOther));
           series.spentTotal.push(bigintToNumberSafe(totals.spentTotal));
@@ -182,6 +178,7 @@ export function createEconomyTracker(opts: { sampleEveryTurns: number; topN: num
       seriesByClientId,
       top: {
         earnedTrade: topEconomyClientIds(totalsByClientId, "earnedTrade", opts.topN),
+        earnedTrain: topEconomyClientIds(totalsByClientId, "earnedTrain", opts.topN),
         earnedConquer: topEconomyClientIds(totalsByClientId, "earnedConquer", opts.topN),
         earnedOther: topEconomyClientIds(totalsByClientId, "earnedOther", opts.topN),
         spentTotal: topEconomyClientIds(totalsByClientId, "spentTotal", opts.topN),
