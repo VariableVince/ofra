@@ -3,13 +3,16 @@ export function usage(): string {
     "Replay performance analyzer",
     "",
     "Usage:",
-    "  npx tsx tools/replay-analyzer/analyzeReplay.ts <replay.json> [--out <report.html>] [--maxTurns <n>] [--economySampleEvery <n>] [--verbose]",
+    "  npx tsx tools/replay-analyzer/analyzeReplay.ts <replay.json|gameID> [--out <report.html>] [--maxTurns <n>] [--economySampleEvery <n>] [--verbose]",
     "",
     "OpenFront source selection:",
     "  --openfrontRoot <path>     Use an existing OpenFront checkout (skips fetching).",
     "  --repo <git-url>           Git remote to fetch from (default: https://github.com/OpenFrontIO/OpenFrontIO.git).",
     "  --cacheDir <path>          Where to cache fetched commits (default: .cache/openfront).",
     "  --noInstall                Skip `npm ci` in the fetched checkout (will likely fail if deps are missing).",
+    "",
+    "Replay fetching:",
+    "  --apiBase <url>            Fetch replay by id from this API (default: https://api.openfront.io).",
     "",
     "Notes:",
     "  - Accepts OpenFront GameRecord / PartialGameRecord JSON.",
@@ -29,6 +32,7 @@ export function parseArgs(argv: string[]): {
   repoUrl: string;
   cacheDir: string | null;
   install: boolean;
+  apiBase: string;
 } {
   let replayPath: string | null = null;
   let outPath: string | null = null;
@@ -40,6 +44,7 @@ export function parseArgs(argv: string[]): {
   let repoUrl = "https://github.com/OpenFrontIO/OpenFrontIO.git";
   let cacheDir: string | null = null;
   let install = true;
+  let apiBase = "https://api.openfront.io";
 
   const args = [...argv];
   while (args.length > 0) {
@@ -74,6 +79,11 @@ export function parseArgs(argv: string[]): {
       install = false;
       continue;
     }
+    if (arg === "--apiBase") {
+      apiBase = args.shift() ?? "";
+      if (!apiBase) throw new Error("Missing value for --apiBase");
+      continue;
+    }
     if (arg === "--maxTurns") {
       const value = args.shift();
       maxTurns = value ? Number.parseInt(value, 10) : NaN;
@@ -100,5 +110,17 @@ export function parseArgs(argv: string[]): {
     throw new Error(`Unexpected argument: ${arg}`);
   }
 
-  return { replayPath, outPath, maxTurns, economySampleEvery, help, verbose, openfrontRoot, repoUrl, cacheDir, install };
+  return {
+    replayPath,
+    outPath,
+    maxTurns,
+    economySampleEvery,
+    help,
+    verbose,
+    openfrontRoot,
+    repoUrl,
+    cacheDir,
+    install,
+    apiBase,
+  };
 }

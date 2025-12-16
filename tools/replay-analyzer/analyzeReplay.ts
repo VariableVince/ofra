@@ -25,6 +25,42 @@ async function extractReplayGitCommit(absoluteReplayPath: string): Promise<strin
   return typeof json?.gitCommit === "string" ? json.gitCommit : null;
 }
 
+const replayIdRegex = /^[a-zA-Z0-9]{8}$/;
+async function resolveReplayInputToPath(opts: {
+  replayInput: string;
+  apiBase: string;
+  repoRoot: string;
+  log?: (msg: string) => void;
+}): Promise<string> {
+  const log = opts.log ?? (() => {});
+  const asPath = path.resolve(process.cwd(), opts.replayInput);
+  try {
+    await fs.access(asPath);
+    return asPath;
+  } catch {
+    // continue
+  }
+
+  if (!replayIdRegex.test(opts.replayInput)) {
+    throw new Error(`Replay not found on disk and not a valid gameID: ${opts.replayInput}`);
+  }
+
+  const apiBase = opts.apiBase.replace(/\/+$/, "");
+  const url = `${apiBase}/game/${opts.replayInput}`;
+  log(`fetching replay: ${url}`);
+  const res = await fetch(url, { method: "GET", headers: { "Content-Type": "application/json" } });
+  const text = await res.text();
+  if (!res.ok) {
+    throw new Error(`Failed to fetch replay ${opts.replayInput} (${res.status} ${res.statusText}): ${text}`);
+  }
+
+  const outDir = path.join(opts.repoRoot, "replays");
+  await fs.mkdir(outDir, { recursive: true });
+  const outPath = path.join(outDir, `${opts.replayInput}.json`);
+  await fs.writeFile(outPath, text, "utf8");
+  return outPath;
+}
+
 async function firstExistingPath(paths: string[]): Promise<string> {
   for (const p of paths) {
     try {
@@ -53,6 +89,7 @@ const {
   repoUrl,
   cacheDir,
   install,
+  apiBase,
 } = parseArgs(process.argv.slice(2));
 if (help || !replayPath) {
   console.log(usage());
@@ -61,7 +98,12 @@ if (help || !replayPath) {
 
 const rawLog = console.log.bind(console);
 
-const absoluteReplayPath = path.resolve(process.cwd(), replayPath);
+const absoluteReplayPath = await resolveReplayInputToPath({
+  replayInput: replayPath,
+  apiBase,
+  repoRoot,
+  log: rawLog,
+});
 const replayGitCommit = await extractReplayGitCommit(absoluteReplayPath);
 if (replayGitCommit !== null && !/^[0-9a-f]{40}$/i.test(replayGitCommit)) {
   throw new Error(`Invalid replay gitCommit (expected 40-hex SHA): ${replayGitCommit}`);
@@ -95,7 +137,7 @@ const d3Path = await firstExistingPath([
   path.join(gameRoot, "node_modules", "d3", "dist", "d3.min.js"),
 ]);
 
-const loaded = await loadReplay({ replayPath, maxTurns, openfront });
+const loaded = await loadReplay({ replayPath: absoluteReplayPath, maxTurns, openfront });
 
 const consoleCapture = createConsoleCapture({ verbose, topN: 15 });
 const economyTracker = createEconomyTracker({ sampleEveryTurns: economySampleEvery, topN: 12 });
@@ -189,7 +231,7 @@ const report: ReplayPerfReport = {
 
 const d3Source = await fs.readFile(d3Path, "utf8");
 
-const defaultOutDir = path.join(analyzerRoot, "out");
+const defaultOutDir = path.join(repoRoot, "replays", "out");
 await fs.mkdir(defaultOutDir, { recursive: true });
 
 const replayBase = path.basename(loaded.absoluteReplayPath).replace(/[^a-zA-Z0-9_.-]+/g, "_");

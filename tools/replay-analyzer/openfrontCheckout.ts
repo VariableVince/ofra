@@ -1,18 +1,18 @@
-import fs from "node:fs/promises";
+﻿import fs from "node:fs/promises";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
 function run(
   exe: string,
   args: string[],
-  opts: { cwd?: string; env?: NodeJS.ProcessEnv } = {},
+  opts: { cwd?: string; env?: NodeJS.ProcessEnv; shell?: boolean } = {},
 ): Promise<{ stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(exe, args, {
       cwd: opts.cwd,
       env: opts.env,
       stdio: ["ignore", "pipe", "pipe"],
-      shell: false,
+      shell: opts.shell ?? false,
     });
     let stdout = "";
     let stderr = "";
@@ -73,14 +73,19 @@ export async function checkoutOpenFrontCommit(opts: CheckoutOptions): Promise<{ 
 export async function ensureGameDepsInstalled(opts: {
   gameRoot: string;
   log?: (msg: string) => void;
-  npmCmd?: string;
 }): Promise<void> {
   const log = opts.log ?? (() => {});
-  const npmCmd = opts.npmCmd ?? "npm";
   const nodeModules = path.join(opts.gameRoot, "node_modules");
   if (await pathExists(nodeModules)) return;
 
   log(`installing deps in ${opts.gameRoot}`);
-  await run(npmCmd, ["ci"], { cwd: opts.gameRoot });
-}
 
+  // When invoked via `npm run`, this points at npm-cli.js. Running it via `node` avoids Windows .cmd issues.
+  const npmExecPath = process.env.npm_execpath;
+  if (npmExecPath) {
+    await run(process.execPath, [npmExecPath, "ci"], { cwd: opts.gameRoot });
+    return;
+  }
+
+  await run("npm", ["ci"], { cwd: opts.gameRoot, shell: process.platform === "win32" });
+}

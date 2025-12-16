@@ -1,3 +1,6 @@
 .cache/
-tools/replay-analyzer/out/
-
+package-lock.json
+node_modules
+OpenFrontIO/
+replays/
+replays/out/
