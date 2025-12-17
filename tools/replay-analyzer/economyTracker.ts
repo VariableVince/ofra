@@ -121,8 +121,8 @@ export function createEconomyTracker(opts: { sampleEveryTurns: number; topN: num
             // City/Factory/Port income from structures
             callerFunction = 'structures';
             break;
-          } else if (functionName.includes('Stats') || functionName.includes('goldWork') || functionName.includes('goldTrain') || functionName.includes('goldWar') || functionName.includes('goldTrade') || functionName.includes('goldSteal')) {
-            // Skip stats-related calls, look for the next one
+          } else if (functionName.includes('Stats') || functionName.includes('goldWork') || functionName.includes('goldTrain') || functionName.includes('goldWar') || functionName.includes('goldTrade') || functionName.includes('goldSteal') || functionName.includes('ConstructionExecution')) {
+            // Skip stats-related calls and construction (doesn't generate income), look for the next one
             continue;
           } else {
             // For debugging, include more function names
@@ -135,6 +135,7 @@ export function createEconomyTracker(opts: { sampleEveryTurns: number; topN: num
           }
         }
       }
+
 
       // Track the gold source cumulatively
       if (!goldSourcesByClientId[cid][callerFunction]) {
