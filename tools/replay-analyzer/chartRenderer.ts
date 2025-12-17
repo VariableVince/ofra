@@ -709,8 +709,42 @@ function renderAll() {
 
     renderMultiLineChart("chart-gold-donations-sent", filteredTurns, mkLines("sentGoldDonations", econ.top.sentGoldDonations), { valueFormatter: fmtGold });
     renderMultiLineChart("chart-gold-donations-received", filteredTurns, mkLines("receivedGoldDonations", econ.top.receivedGoldDonations), { valueFormatter: fmtGold });
-    renderMultiLineChart("chart-troop-donations-sent", filteredTurns, mkLines("sentTroopDonations", econ.top.sentTroopDonations), {});
-    renderMultiLineChart("chart-troop-donations-received", filteredTurns, mkLines("receivedTroopDonations", econ.top.receivedTroopDonations), {});
+    // Derive donation charts from the new sources/drains data
+    if (econ.troopSourceSeriesByClientId && filteredTurns.length > 0) {
+      // Apply timeline filtering to troop source data
+      const { filteredSeries: filteredTroopSeries } = filterEconomyDataByTimeline(econ.turns, econ.troopSourceSeriesByClientId);
+
+      // Sent donations: aggregate sentTroopDonation from drains (negative values, convert to positive)
+      const sentDonationLines = Object.keys(filteredTroopSeries).map((clientId, idx) => {
+        const series = filteredTroopSeries[clientId];
+        const sentData = series['sentTroopDonation'] || [];
+        return {
+          id: clientId,
+          label: labelByClientId.get(clientId) || clientId,
+          color: colors[idx % colors.length],
+          ys: sentData.map(val => val < 0 ? -val : 0) // Convert negative drain values to positive for display
+        };
+      }).filter(line => line.ys.some(y => y > 0)); // Only include clients with sent donations
+
+      // Received donations: aggregate PlayerImpl.donateTroops from sources
+      const receivedDonationLines = Object.keys(filteredTroopSeries).map((clientId, idx) => {
+        const series = filteredTroopSeries[clientId];
+        const receivedData = series['PlayerImpl.donateTroops'] || [];
+        return {
+          id: clientId,
+          label: labelByClientId.get(clientId) || clientId,
+          color: colors[idx % colors.length],
+          ys: receivedData.map(val => val > 0 ? val : 0) // Only positive values (sources)
+        };
+      }).filter(line => line.ys.some(y => y > 0)); // Only include clients with received donations
+
+      renderMultiLineChart("chart-troop-donations-sent", filteredTurns, sentDonationLines, {});
+      renderMultiLineChart("chart-troop-donations-received", filteredTurns, receivedDonationLines, {});
+    } else {
+      // Fallback to old system if new data not available
+      renderMultiLineChart("chart-troop-donations-sent", filteredTurns, mkLines("sentTroopDonations", econ.top.sentTroopDonations), {});
+      renderMultiLineChart("chart-troop-donations-received", filteredTurns, mkLines("receivedTroopDonations", econ.top.receivedTroopDonations), {});
+    }
     renderMultiLineChart("chart-tiles-owned", filteredTurns, mkLines("tilesOwned", Object.keys(filteredSeries)), {});
 
     // Render gold sources by function (raw function names for maximum detail)
@@ -744,7 +778,7 @@ function renderAll() {
       renderMultiLineChart("chart-gold-sources", filteredTurns, sourceLines, { valueFormatter: fmtGold });
     }
 
-    // Render troop sources by function
+    // Render troop sources and drains by function
     if (econ.troopSourceSeriesByClientId && filteredTurns.length > 0) {
       const allTroopFunctions = new Set<string>();
       for (const clientId of Object.keys(econ.troopSourceSeriesByClientId)) {
@@ -753,11 +787,13 @@ function renderAll() {
         }
       }
 
-      const troopSourceLines = Array.from(allTroopFunctions).map((func, idx) => ({
-        id: func,
-        label: func,
-        color: colors[idx % colors.length],
-        ys: filteredTurns.map((_, turnIdx) => {
+      // Separate sources (positive values) and drains (negative values)
+      const sourceLines: Array<{ id: string; label: string; color: string; ys: number[] }> = [];
+      const drainLines: Array<{ id: string; label: string; color: string; ys: number[] }> = [];
+
+      Array.from(allTroopFunctions).forEach((func, idx) => {
+        const color = colors[idx % colors.length];
+        const ys = filteredTurns.map((_, turnIdx) => {
           let total = 0;
           for (const clientId of Object.keys(econ.troopSourceSeriesByClientId)) {
             const series = econ.troopSourceSeriesByClientId[clientId][func];
@@ -766,10 +802,35 @@ function renderAll() {
             }
           }
           return total;
-        }),
-      }));
+        });
 
-      renderMultiLineChart("chart-troop-sources", filteredTurns, troopSourceLines, {});
+        // Check if this function has any positive values (sources) or negative values (drains)
+        const hasPositive = ys.some(y => y > 0);
+        const hasNegative = ys.some(y => y < 0);
+
+        if (hasPositive) {
+          // For sources, keep positive values and zero out negatives
+          sourceLines.push({
+            id: func,
+            label: func,
+            color: color,
+            ys: ys.map(y => y > 0 ? y : 0)
+          });
+        }
+
+        if (hasNegative) {
+          // For drains, convert negatives to positives (since we want to show magnitude of loss)
+          drainLines.push({
+            id: func,
+            label: func,
+            color: color,
+            ys: ys.map(y => y < 0 ? -y : 0) // Convert negative to positive for display
+          });
+        }
+      });
+
+      renderMultiLineChart("chart-troop-sources", filteredTurns, sourceLines, {});
+      renderMultiLineChart("chart-troop-drains", filteredTurns, drainLines, {});
     }
   }
 

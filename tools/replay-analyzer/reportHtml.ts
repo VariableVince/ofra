@@ -136,8 +136,12 @@ export function reportHtml(d3Source: string, chartJsSource: string, report: Repl
           <div id="chart-gold-sources" class="chart"></div>
         </div>
         <div class="card">
-          <h2>👥 Troop sources breakdown</h2>
+          <h2>➕ Troop sources (gains)</h2>
           <div id="chart-troop-sources" class="chart"></div>
+        </div>
+        <div class="card">
+          <h2>➖ Troop drains (losses)</h2>
+          <div id="chart-troop-drains" class="chart"></div>
         </div>
 
         <!-- Spending & Balance -->

@@ -1,4 +1,12 @@
-import type { EconomyReport, EconomyTotals } from "./types";
+import type {
+  EconomyReport,
+  EconomyTotals,
+  EconomyPlayerSeries,
+  GoldSourceBreakdown,
+  GoldSourceSeries,
+  TroopSourceBreakdown,
+  TroopSourceSeries
+} from "./types";
 import { asBigInt, bigintToNumberSafe, minBigInt } from "./utils";
 
 type GoldStats = { work: bigint; war: bigint; trade: bigint; steal: bigint; train: bigint };
@@ -129,47 +137,33 @@ export function createEconomyTracker(opts: { sampleEveryTurns: number; topN: num
       return originalAddGold.call(this, toAdd, tile);
     };
 
-    // Hook addTroops for donation tracking
+    // Hook the addTroops method to track callers (similar to addGold)
     const originalAddTroops = p.addTroops;
     p.addTroops = function(toAdd: number) {
-      // Analyze stack trace to determine troop source
+      // Find the first non-tracker function in the stack trace
       const stack = new Error().stack || '';
-      let callerFunction = 'unknown';
-
-      // Split stack into lines and find the most relevant caller
       const stackLines = stack.split('\n').slice(1); // Skip the first line (Error itself)
 
+      let callerFunction = 'unknown';
       for (const line of stackLines) {
         // Skip lines that are part of our tracking code
         if (line.includes('economyTracker') || line.includes('at addTroops')) {
           continue;
         }
 
-        // Look for function names in the stack
+        // Extract function name from stack trace
         const match = line.match(/at\s+([^\s(]+(?:\.[^\s(]+)?)\s*\(/);
         if (match) {
-          const functionName = match[1];
-
-          // Categorize based on known patterns
-          if (functionName.includes('donateTroops')) {
-            callerFunction = 'receivedTroopDonation';
-            break;
-          } else if (functionName.includes('PlayerExecution')) {
-            callerFunction = 'workers';
-            break;
-          }
-          // Add more patterns as needed
+          callerFunction = match[1];
+          break; // Use the first valid function found
         }
       }
 
-      // Track troop changes (for donations)
-      if (callerFunction === 'receivedTroopDonation') {
-        // This is a received troop donation
-        if (!troopSourcesByClientId[cid]['receivedTroopDonation']) {
-          troopSourcesByClientId[cid]['receivedTroopDonation'] = 0n;
-        }
-        troopSourcesByClientId[cid]['receivedTroopDonation'] += BigInt(Math.round(toAdd));
+      // Track the troop source cumulatively
+      if (!troopSourcesByClientId[cid][callerFunction]) {
+        troopSourcesByClientId[cid][callerFunction] = 0n;
       }
+      troopSourcesByClientId[cid][callerFunction] += BigInt(Math.round(toAdd));
 
       // Call original method
       return originalAddTroops.call(this, toAdd);
@@ -194,16 +188,48 @@ export function createEconomyTracker(opts: { sampleEveryTurns: number; topN: num
     if (p.donateTroops) {
       const originalDonateTroops = p.donateTroops;
       p.donateTroops = function(recipient: any, troops: number) {
-        // Track sent troop donation
+        // Track sent troop donation as a drain (negative value)
         if (!troopSourcesByClientId[cid]['sentTroopDonation']) {
           troopSourcesByClientId[cid]['sentTroopDonation'] = 0n;
         }
-        troopSourcesByClientId[cid]['sentTroopDonation'] += BigInt(Math.round(troops));
+        troopSourcesByClientId[cid]['sentTroopDonation'] -= BigInt(Math.round(troops)); // Negative for drains
 
         // Call original method
         return originalDonateTroops.call(this, recipient, troops);
       };
     }
+
+    // Hook removeTroops for troop drains/losses
+    const originalRemoveTroops = p.removeTroops;
+    p.removeTroops = function(troops: number) {
+      // Find the first non-tracker function in the stack trace
+      const stack = new Error().stack || '';
+      const stackLines = stack.split('\n').slice(1); // Skip the first line (Error itself)
+
+      let callerFunction = 'unknown';
+      for (const line of stackLines) {
+        // Skip lines that are part of our tracking code
+        if (line.includes('economyTracker') || line.includes('at removeTroops')) {
+          continue;
+        }
+
+        // Extract function name from stack trace
+        const match = line.match(/at\s+([^\s(]+(?:\.[^\s(]+)?)\s*\(/);
+        if (match) {
+          callerFunction = match[1];
+          break; // Use the first valid function found
+        }
+      }
+
+      // Track the troop drain (store as negative to distinguish from sources)
+      if (!troopSourcesByClientId[cid][callerFunction]) {
+        troopSourcesByClientId[cid][callerFunction] = 0n;
+      }
+      troopSourcesByClientId[cid][callerFunction] -= BigInt(Math.round(troops));
+
+      // Call original method
+      return originalRemoveTroops.call(this, troops);
+    };
 
     playerByClientId.set(cid, p);
     prevGoldByClientId.set(cid, p.gold());
@@ -214,7 +240,7 @@ export function createEconomyTracker(opts: { sampleEveryTurns: number; topN: num
 
   return {
     totalsByClientId,
-    init: (game: Game) => {
+    init: (game: any) => {
       for (const p of game.allPlayers()) {
         if (!p.isPlayer()) continue;
         ensurePlayer(p);
@@ -230,7 +256,7 @@ export function createEconomyTracker(opts: { sampleEveryTurns: number; topN: num
         prevGoldStatsByClientId.set(cid, { work: 0n, war: 0n, trade: 0n, steal: 0n, train: 0n });
       }
     },
-    afterTick: (game: Game, turnNumber: number, conquestEvents: ConquestUpdate[], isLast: boolean) => {
+    afterTick: (game: any, turnNumber: number, conquestEvents: any[], isLast: boolean) => {
       const conquestLossByClientIdThisTick = new Map<string, bigint>();
       for (const cu of conquestEvents ?? []) {
         const conqueredId = String((cu as any).conqueredId ?? "");
@@ -262,7 +288,7 @@ export function createEconomyTracker(opts: { sampleEveryTurns: number; topN: num
         const dTrade = currGoldStats.trade > prevGoldStats.trade ? (currGoldStats.trade - prevGoldStats.trade) : 0n;
         const dSteal = currGoldStats.steal > prevGoldStats.steal ? (currGoldStats.steal - prevGoldStats.steal) : 0n;
         // Try stats diff first, fall back to gold source diff
-        let dTrain = currGoldStats.train - prevGoldStats.train;
+        let dTrain: bigint = currGoldStats.train - prevGoldStats.train;
         if (dTrain <= 0n) {
           // Fallback to gold source tracking
           const prevSources = prevGoldSourcesByClientId.get(cid) || {};

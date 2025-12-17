@@ -82,9 +82,9 @@ export type EconomyReport = {
   turns: number[];
   players: { clientID: string; displayName: string }[];
   seriesByClientId: Record<string, EconomyPlayerSeries>;
-  goldSourcesByClientId: Record<string, GoldSourceBreakdown>;
+  goldSourcesByClientId: Record<string, Record<string, number>>;
   goldSourceSeriesByClientId: Record<string, GoldSourceSeries>;
-  troopSourcesByClientId: Record<string, TroopSourceBreakdown>;
+  troopSourcesByClientId: Record<string, Record<string, number>>;
   troopSourceSeriesByClientId: Record<string, TroopSourceSeries>;
   top: {
     earnedTrade: string[];
