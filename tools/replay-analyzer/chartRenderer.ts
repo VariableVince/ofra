@@ -5,6 +5,7 @@ interface ReplayPerfReport {
   meta: {
     gameID: string;
     replayPath?: string;
+    apiBase: string;
     replayGitCommit?: string;
     map: string;
     mapSize: string;

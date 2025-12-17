@@ -236,6 +236,7 @@ const report: ReplayPerfReport = {
     generatedAt: new Date().toISOString(),
     replayPath: loaded.absoluteReplayPath,
     gameID: loaded.gameStartInfo.gameID,
+    apiBase: apiBase,
     replayGitCommit: loaded.replayGitCommit,
     map: String(loaded.gameStartInfo.config.gameMap),
     mapSize: String(loaded.gameStartInfo.config.gameMapSize),

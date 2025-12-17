@@ -51,7 +51,7 @@ export function reportHtml(d3Source: string, chartJsSource: string, report: Repl
     <header>
       <h1>${title}</h1>
       <div class="meta">
-        replay: ${report.meta.replayPath}<br/>
+        replay: <a href="${report.meta.apiBase}/game/${report.meta.gameID}" target="_blank">${report.meta.gameID}</a><br/>
         git: ${report.meta.replayGitCommit ?? "n/a"}<br/>
         map: ${report.meta.map} (${report.meta.mapSize}) | turns: ${report.meta.numTurns} | simulated: ${report.meta.numTicksSimulated}<br/>
         unknown clientIDs: ${report.meta.unknownClientIds.total} (non-mark: ${report.meta.unknownClientIds.withNonMarkIntents}, mark-only: ${report.meta.unknownClientIds.markOnly})<br/>

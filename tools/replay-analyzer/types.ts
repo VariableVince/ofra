@@ -117,6 +117,7 @@ export type ReplayPerfReport = {
     generatedAt: string;
     replayPath: string;
     gameID: string;
+    apiBase: string;
     replayGitCommit: string | null;
     map: string;
     mapSize: string;
