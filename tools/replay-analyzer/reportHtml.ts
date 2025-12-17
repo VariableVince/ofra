@@ -21,7 +21,7 @@ export function reportHtml(d3Source: string, report: ReplayPerfReport): string {
       header { padding: 18px 22px; border-bottom: 1px solid rgba(255,255,255,0.08); }
       header h1 { margin: 0 0 6px 0; font-size: 18px; }
       header .meta { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; opacity: 0.85; }
-      main { padding: 16px 22px 40px; max-width: 1200px; margin: 0 auto; }
+      main { padding: 16px 22px 40px; margin: 0 auto; }
       .grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
       @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
       .card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 12px 8px; }
@@ -82,52 +82,62 @@ export function reportHtml(d3Source: string, report: ReplayPerfReport): string {
           <div id="chart-players" class="chart"></div>
         </div>
         <div class="card">
-          <h2>Tiles owned per player (peak, top 30 humans)</h2>
+          <h2>🗺️ Tiles owned over time</h2>
+          <div id="chart-tiles-owned" class="chart"></div>
+        </div>
+        <div class="card">
+          <h2>🗺️ Peak tiles owned</h2>
           <div id="chart-tiles" class="chart"></div>
         </div>
       </div>
 
       <div class="grid" style="margin-top: 14px;">
+        <!-- Income Sources -->
         <div class="card">
-          <h2>Gold earned: trade ships (cumulative)</h2>
+          <h2>💰 Gold earned: trade ships</h2>
           <div id="chart-gold-earned-trade" class="chart"></div>
         </div>
         <div class="card">
-          <h2>Gold earned: rail/trains (cumulative)</h2>
+          <h2>🚂 Gold earned: rail/trains</h2>
           <div id="chart-gold-earned-train" class="chart"></div>
         </div>
         <div class="card">
-          <h2>Gold earned: conquest/war (cumulative)</h2>
+          <h2>⚔️ Gold earned: conquest/war</h2>
           <div id="chart-gold-earned-conquer" class="chart"></div>
         </div>
         <div class="card">
-          <h2>Total gold earned by source (cumulative)</h2>
+          <h2>📊 Total gold earned by source</h2>
           <div id="chart-gold-sources" class="chart"></div>
         </div>
+
+        <!-- Spending & Balance -->
         <div class="card">
-          <h2>Gold earned: other (residual) (cumulative)</h2>
-          <div id="chart-gold-earned-other" class="chart"></div>
+          <h2>💸 Gold spent: total</h2>
+          <div id="chart-gold-spent-total" class="chart"></div>
         </div>
         <div class="card">
-          <h2>Gold donations sent (cumulative)</h2>
+          <h2>⚖️ Gold earned: other (residual)</h2>
+          <div id="chart-gold-earned-other" class="chart"></div>
+        </div>
+
+        <!-- Diplomatic Activity -->
+        <div class="card">
+          <h2>🤝 Gold donations sent</h2>
           <div id="chart-gold-donations-sent" class="chart"></div>
         </div>
         <div class="card">
-          <h2>Gold donations received (cumulative)</h2>
+          <h2>🎁 Gold donations received</h2>
           <div id="chart-gold-donations-received" class="chart"></div>
         </div>
         <div class="card">
-          <h2>Troop donations sent (cumulative)</h2>
+          <h2>👥 Troop donations sent</h2>
           <div id="chart-troop-donations-sent" class="chart"></div>
         </div>
         <div class="card">
-          <h2>Troop donations received (cumulative)</h2>
+          <h2>🛡️ Troop donations received</h2>
           <div id="chart-troop-donations-received" class="chart"></div>
         </div>
-        <div class="card">
-          <h2>Tiles owned over time</h2>
-          <div id="chart-tiles-owned" class="chart"></div>
-        </div>
+
       </div>
 
       <div class="card" style="margin-top: 14px;">
