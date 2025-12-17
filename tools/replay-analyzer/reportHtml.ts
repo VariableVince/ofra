@@ -25,13 +25,14 @@ export function reportHtml(d3Source: string, chartJsSource: string, report: Repl
       .grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
       @media (min-width: 900px) { .grid { grid-template-columns: 1fr 1fr; } }
       .card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 12px 12px 8px; }
-      .card h2 { margin: 0 0 10px 0; font-size: 14px; }
+      .card h2 { margin: 0 0 8px 0; font-size: 14px; }
+      .summary-sticky { position: sticky; top: 0; z-index: 100; background: #0b1220; padding: 10px 12px 6px; margin: -10px -12px 8px; border-radius: 12px 12px 0 0; }
       svg {overflow: visible;}
-      .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
-      .kpi { padding: 10px 12px; border-radius: 10px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); }
-      .kpi .label { font-size: 12px; opacity: 0.8; }
-      .kpi .value { font-size: 18px; font-weight: 700; margin-top: 2px; }
-      .kpi .sub { font-size: 12px; opacity: 0.75; margin-top: 2px; }
+      .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px; }
+      .kpi { padding: 8px 10px; border-radius: 8px; background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.06); }
+      .kpi .label { font-size: 11px; opacity: 0.8; margin-bottom: 1px; }
+      .kpi .value { font-size: 16px; font-weight: 700; margin-top: 0; line-height: 1.2; }
+      .kpi .sub { font-size: 11px; opacity: 0.75; margin-top: 1px; line-height: 1.2; }
       .chart { width: 100%; height: 260px; }
       .axis path, .axis line { stroke: rgba(255,255,255,0.18); }
       .axis text { fill: rgba(229,231,235,0.8); font-size: 11px; }
@@ -48,6 +49,14 @@ export function reportHtml(d3Source: string, chartJsSource: string, report: Repl
       input[type="range"] { background: transparent; cursor: pointer; }
       input[type="range"]::-webkit-slider-thumb { appearance: none; background: #60a5fa; border-radius: 50%; width: 16px; height: 16px; cursor: pointer; }
       input[type="range"]::-moz-range-thumb { background: #60a5fa; border-radius: 50%; width: 16px; height: 16px; cursor: pointer; border: none; }
+      .collapsible { cursor: pointer; user-select: none; }
+      .collapsible:hover { opacity: 0.8; }
+      .collapsible::before { content: "▶"; display: inline-block; margin-right: 8px; transition: transform 0.2s; }
+      .collapsible.collapsed::before { transform: rotate(0deg); }
+      .collapsible.expanded::before { transform: rotate(90deg); }
+      .collapsible-content { max-height: 0; overflow: hidden; transition: max-height 0.3s ease-out; }
+      .collapsible-content.expanded { max-height: 1000px; }
+      .summary-sticky { position: sticky; top: 0; z-index: 100; background: #0b1220; }
     </style>
   </head>
   <body>
@@ -62,36 +71,22 @@ export function reportHtml(d3Source: string, chartJsSource: string, report: Repl
       </div>
     </header>
     <main>
-      <div class="card">
-        <h2>Summary</h2>
+      <div class="card summary-sticky">
         <div id="summary" class="summary"></div>
-      </div>
-
-      <div class="card" style="margin-top: 14px;">
-        <h2>Diagnostics</h2>
-        <div id="diagnostics" class="muted"></div>
-      </div>
-
-      <div class="card" style="margin-top: 14px;">
-        <h2>Timeline Filter</h2>
-        <div style="margin-bottom: 12px;">
-          <div style="margin-bottom: 8px; font-size: 12px; opacity: 0.8;">
-            Current range: <span id="timeline-range-display" class="mono">All turns</span>
-          </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr auto; gap: 16px; align-items: center;">
-            <div>
-              <label style="display: block; font-size: 11px; margin-bottom: 4px; opacity: 0.8;">Start Turn</label>
-              <input type="range" id="timeline-start" min="1" max="1000" value="1" style="width: 100%;" />
+        <div style="margin-top: 16px; padding-top: 12px; border-top: 1px solid rgba(255,255,255,0.08);">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="font-size: 11px; opacity: 0.8; flex-shrink: 0;">
+              Current range: <span id="timeline-range-display" class="mono">All turns</span>
             </div>
-            <div>
-              <label style="display: block; font-size: 11px; margin-bottom: 4px; opacity: 0.8;">End Turn</label>
-              <input type="range" id="timeline-end" min="1" max="1000" value="1000" style="width: 100%;" />
-            </div>
-            <div>
-              <button id="timeline-reset" style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.10); color: #e5e7eb; border-radius: 6px; padding: 6px 12px; font-size: 12px; cursor: pointer; width: 100%;">Reset</button>
-            </div>
+            <div id="timeline-range-bar" style="flex: 1; min-width: 0;"></div>
+            <button id="timeline-reset" style="background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.10); color: #e5e7eb; border-radius: 4px; padding: 2px 6px; font-size: 10px; cursor: pointer; flex-shrink: 0;">Reset</button>
           </div>
         </div>
+      </div>
+
+      <div class="card" style="margin-top: 14px;">
+        <h2 class="collapsible collapsed" onclick="toggleDiagnostics()">Diagnostics</h2>
+        <div id="diagnostics" class="collapsible-content muted"></div>
       </div>
 
       <div class="grid" style="margin-top: 14px;">

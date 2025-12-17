@@ -147,6 +147,23 @@ function hideTooltip() {
   tooltip.style.display = "none";
 }
 
+function toggleDiagnostics() {
+  const header = document.querySelector('.collapsible') as HTMLElement;
+  const content = document.getElementById('diagnostics') as HTMLElement;
+  if (header && content) {
+    const isCollapsed = header.classList.contains('collapsed');
+    if (isCollapsed) {
+      header.classList.remove('collapsed');
+      header.classList.add('expanded');
+      content.classList.add('expanded');
+    } else {
+      header.classList.remove('expanded');
+      header.classList.add('collapsed');
+      content.classList.remove('expanded');
+    }
+  }
+}
+
 function updateTimelineDisplay() {
   const display = document.getElementById("timeline-range-display")!;
   if (timelineStartTurn === 1 && timelineEndTurn === report.meta.numTurns) {
@@ -254,57 +271,185 @@ function initTimelineControls() {
   if (timelineInitialized) return;
   timelineInitialized = true;
 
-  const startInput = document.getElementById("timeline-start") as HTMLInputElement;
-  const endInput = document.getElementById("timeline-end") as HTMLInputElement;
   const resetButton = document.getElementById("timeline-reset") as HTMLButtonElement;
+  const rangeBarContainer = document.getElementById("timeline-range-bar");
 
-  if (!startInput || !endInput || !resetButton) return;
+  if (!rangeBarContainer || !resetButton) return;
 
-  // Set initial values
-  startInput.min = "1";
-  startInput.max = report.meta.numTicksSimulated.toString();
-  startInput.value = timelineStartTurn.toString();
+  const maxTurns = report.meta.numTicksSimulated;
+  const denom = Math.max(1, maxTurns - 1);
+  const logicalWidth = 1000; // internal coordinate system; SVG scales to fit available space
+  const height = 20;
 
-  endInput.min = "1";
-  endInput.max = report.meta.numTicksSimulated.toString();
-  endInput.value = timelineEndTurn.toString();
+  const svg = d3.select(rangeBarContainer)
+    .append("svg")
+    .attr("height", height)
+    .attr("width", "100%")
+    .attr("viewBox", `0 0 ${logicalWidth} ${height}`)
+    .attr("preserveAspectRatio", "none")
+    .style("cursor", "pointer");
+  const svgEl = svg.node() as SVGSVGElement | null;
+  if (!svgEl) return;
+  const svgElNN = svgEl as SVGSVGElement;
 
-  updateTimelineDisplay();
+  function pointerX(evt: MouseEvent): number {
+    // Convert screen coords to SVG viewBox coords so dragging works even when SVG is scaled.
+    const pt = svgElNN.createSVGPoint();
+    pt.x = evt.clientX;
+    pt.y = evt.clientY;
+    const ctm = svgElNN.getScreenCTM();
+    if (!ctm) return 0;
+    const p = pt.matrixTransform(ctm.inverse());
+    return p.x;
+  }
 
-  const updateTimeline = () => {
-    const newStart = parseInt(startInput.value);
-    const newEnd = parseInt(endInput.value);
+  // Background track
+  svg.append("rect")
+    .attr("x", 0)
+    .attr("y", height / 2 - 2)
+    .attr("width", logicalWidth)
+    .attr("height", 4)
+    .attr("fill", "rgba(255,255,255,0.1)")
+    .attr("rx", 2);
 
-    // Ensure start <= end
-    if (newStart > newEnd) {
-      if (startInput === document.activeElement) {
-        endInput.value = newStart.toString();
-        timelineEndTurn = newStart;
-      } else {
-        startInput.value = newEnd.toString();
-        timelineStartTurn = newEnd;
-      }
-    } else {
-      timelineStartTurn = newStart;
-      timelineEndTurn = newEnd;
-    }
+  // Selection track
+  const selectionTrack = svg.append("rect")
+    .attr("y", height / 2 - 2)
+    .attr("height", 4)
+    .attr("fill", "#60a5fa")
+    .attr("rx", 2);
+
+  // Handles
+  // Use line handles (not circles) so they don't visibly stretch when SVG scales horizontally.
+  const handleY1 = 2;
+  const handleY2 = height - 2;
+  const startHandle = svg.append("line")
+    .attr("y1", handleY1)
+    .attr("y2", handleY2)
+    .attr("stroke", "#60a5fa")
+    .attr("stroke-width", 3)
+    .attr("stroke-linecap", "round")
+    .attr("vector-effect", "non-scaling-stroke")
+    .style("cursor", "ew-resize");
+
+  const endHandle = svg.append("line")
+    .attr("y1", handleY1)
+    .attr("y2", handleY2)
+    .attr("stroke", "#60a5fa")
+    .attr("stroke-width", 3)
+    .attr("stroke-linecap", "round")
+    .attr("vector-effect", "non-scaling-stroke")
+    .style("cursor", "ew-resize");
+
+  let dragging: string | null = null;
+  let startOffset = 0;
+  let lastRenderTurn = timelineStartTurn;
+
+  function handleHitSlopX(px: number): number {
+    // Convert a desired screen-pixel slop into viewBox units.
+    const rect = svgElNN.getBoundingClientRect();
+    const wPx = Math.max(1, rect.width);
+    return (px / wPx) * logicalWidth;
+  }
+
+  function updateRangeBar(updateCharts = true) {
+    const startX = ((timelineStartTurn - 1) / denom) * logicalWidth;
+    const endX = ((timelineEndTurn - 1) / denom) * logicalWidth;
+
+    selectionTrack
+      .attr("x", startX)
+      .attr("width", Math.max(endX - startX, 1));
+
+    startHandle.attr("x1", startX).attr("x2", startX);
+    endHandle.attr("x1", endX).attr("x2", endX);
 
     updateTimelineDisplay();
+    if (updateCharts) {
+      renderAll();
+    }
+  }
+
+  function getTurnFromX(x: number) {
+    const ratio = Math.max(0, Math.min(1, x / logicalWidth));
+    return Math.round(ratio * denom) + 1;
+  }
+
+  svg.on("mousedown", function(event: MouseEvent) {
+    const mouseX = pointerX(event);
+    const startX = ((timelineStartTurn - 1) / denom) * logicalWidth;
+    const endX = ((timelineEndTurn - 1) / denom) * logicalWidth;
+    const slop = handleHitSlopX(10);
+
+    // Determine which handle to drag or if clicking between handles
+    if (Math.abs(mouseX - startX) < slop) {
+      dragging = 'start';
+    } else if (Math.abs(mouseX - endX) < slop) {
+      dragging = 'end';
+    } else if (mouseX >= startX && mouseX <= endX) {
+      // Click between handles - move both relative to mouse position
+      dragging = 'both';
+      startOffset = mouseX - startX;
+    } else {
+      // Click outside selection - move closest handle
+      const distToStart = Math.abs(mouseX - startX);
+      const distToEnd = Math.abs(mouseX - endX);
+      dragging = distToStart < distToEnd ? 'start' : 'end';
+    }
+
+    event.preventDefault();
+  });
+
+  d3.select(document).on("mousemove.timeline", function(event: MouseEvent) {
+    if (!dragging) return;
+
+    const mouseX = pointerX(event);
+    let newStart = timelineStartTurn;
+    let newEnd = timelineEndTurn;
+
+    if (dragging === 'start') {
+      newStart = getTurnFromX(mouseX);
+      newStart = Math.max(1, Math.min(newEnd - 1, newStart));
+    } else if (dragging === 'end') {
+      newEnd = getTurnFromX(mouseX);
+      newEnd = Math.max(newStart + 1, Math.min(maxTurns, newEnd));
+    } else if (dragging === 'both') {
+      const newStartX = mouseX - startOffset;
+      const newEndX = newStartX + (((timelineEndTurn - timelineStartTurn) / denom) * logicalWidth);
+      newStart = getTurnFromX(newStartX);
+      newEnd = getTurnFromX(newEndX);
+      newStart = Math.max(1, Math.min(maxTurns - 1, newStart));
+      newEnd = Math.max(newStart + 1, Math.min(maxTurns, newEnd));
+    }
+
+    timelineStartTurn = newStart;
+    timelineEndTurn = newEnd;
+
+    // Update the range bar visual immediately
+    updateRangeBar(false);
+
+    // Render charts on turn changes (throttled to avoid excessive renders)
+    if (Math.abs(timelineStartTurn - lastRenderTurn) >= 5 || Math.abs(timelineEndTurn - lastRenderTurn) >= 5) {
+      renderAll();
+      lastRenderTurn = timelineStartTurn;
+    }
+  });
+
+  d3.select(document).on("mouseup.timeline", function() {
+    dragging = null;
     renderAll();
-  };
+  });
 
   const resetTimeline = () => {
     timelineStartTurn = 1;
-    timelineEndTurn = report.meta.numTicksSimulated;
-    startInput.value = timelineStartTurn.toString();
-    endInput.value = timelineEndTurn.toString();
-    updateTimelineDisplay();
+    timelineEndTurn = maxTurns;
+    updateRangeBar();
     renderAll();
   };
 
-  startInput.addEventListener("input", updateTimeline);
-  endInput.addEventListener("input", updateTimeline);
   resetButton.addEventListener("click", resetTimeline);
+
+  // Initial render
+  updateRangeBar();
 }
 
 function renderSummary() {
