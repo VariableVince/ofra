@@ -166,7 +166,7 @@ function toggleDiagnostics() {
 
 function updateTimelineDisplay() {
   const display = document.getElementById("timeline-range-display")!;
-  if (timelineStartTurn === 1 && timelineEndTurn === report.meta.numTurns) {
+  if (timelineStartTurn === 1 && timelineEndTurn === report.meta.numTicksSimulated) {
     display.textContent = "All turns";
   } else {
     display.textContent = `Turns ${timelineStartTurn} - ${timelineEndTurn}`;
@@ -453,7 +453,40 @@ function initTimelineControls() {
 }
 
 function renderSummary() {
-  const s = report.summary;
+  const isTimelineFiltered = timelineStartTurn !== 1 || timelineEndTurn !== report.meta.numTicksSimulated;
+  const samples = filterSamplesByTimeline(report.samples);
+
+  const nums = (xs: number[]) => xs.filter((n) => Number.isFinite(n));
+  const avg = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : NaN);
+  const quantile = (xs: number[], q: number) => {
+    if (!xs.length) return NaN;
+    const s = xs.slice().sort((a, b) => a - b);
+    const pos = (s.length - 1) * q;
+    const base = Math.floor(pos);
+    const rest = pos - base;
+    const a = s[base];
+    const b = s[base + 1] ?? a;
+    return a + rest * (b - a);
+  };
+
+  const tickMs = nums(samples.map((d) => d.tickExecutionMs));
+  const intents = nums(samples.map((d) => d.intents));
+
+  const filteredSummary = {
+    tickExecutionMs: {
+      avg: avg(tickMs),
+      max: tickMs.length ? Math.max(...tickMs) : NaN,
+      p50: quantile(tickMs, 0.5),
+      p95: quantile(tickMs, 0.95),
+      p99: quantile(tickMs, 0.99),
+    },
+    intents: {
+      total: intents.length ? intents.reduce((a, b) => a + b, 0) : NaN,
+      avgPerTurn: avg(intents),
+    },
+  };
+
+  const s = isTimelineFiltered ? { ...report.summary, ...filteredSummary } : report.summary;
   const root = document.getElementById("summary")!;
   root.innerHTML = "";
   root.appendChild(addKpi("Avg tick execution", fmtMs(s.tickExecutionMs.avg) + " ms", "p50 " + fmtMs(s.tickExecutionMs.p50) + " | p95 " + fmtMs(s.tickExecutionMs.p95) + " | p99 " + fmtMs(s.tickExecutionMs.p99)));
@@ -461,6 +494,15 @@ function renderSummary() {
   root.appendChild(addKpi("Total intents", fmtInt(s.intents.total), "avg/tick " + fmtMs(s.intents.avgPerTurn)));
   root.appendChild(addKpi("Hash checks", fmtInt(s.hashChecks.compared) + " compared", fmtInt(s.hashChecks.mismatches) + " mismatches"));
   root.appendChild(addKpi("Warnings", fmtInt(s.warnings.total), "missing client " + fmtInt(s.warnings.missingClientId.total) + " | missing target " + fmtInt(s.warnings.missingTargetId.total)));
+
+  if (isTimelineFiltered) {
+    // We don't have per-turn hash/warn aggregates in the report today; make this explicit.
+    const note = document.createElement("div");
+    note.className = "muted";
+    note.style.marginTop = "8px";
+    note.innerHTML = "Note: <strong>Hash checks</strong> and <strong>Warnings</strong> are shown for the full replay (not range-filtered).";
+    root.appendChild(note);
+  }
 }
 
 function escapeHtml(s: string) {
@@ -783,8 +825,10 @@ function renderAll() {
     },
   });
 
+  const isTimelineFiltered = timelineStartTurn !== 1 || timelineEndTurn !== report.meta.numTicksSimulated;
   const humans = report.players.filter((p) => p.type === "HUMAN");
-  const bars = humans
+  const humansForTiles = calculateFilteredPlayerStats().filter((p) => p.type === "HUMAN");
+  const barsFull = humans
     .map((p) => ({
       label: p.displayName || p.name,
       value: p.tilesOwnedMax,
@@ -793,6 +837,16 @@ function renderAll() {
     }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 30);
+  const barsFiltered = humansForTiles
+    .map((p) => ({
+      label: p.displayName || p.name,
+      value: p.tilesOwnedMax,
+      tilesEnd: p.tilesOwned,
+      tilesMax: p.tilesOwnedMax,
+    }))
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 30);
+  const bars = isTimelineFiltered ? barsFiltered : barsFull;
   renderBarChart("chart-tiles", bars, {
     color: "#a78bfa",
     tooltipHtml: (d) =>
@@ -808,6 +862,8 @@ function renderAll() {
   const econ = report.economy;
   if (econ && econ.turns && econ.turns.length > 0 && econ.players && econ.players.length > 0) {
     const { filteredTurns, filteredSeries } = filterEconomyDataByTimeline(econ.turns, econ.seriesByClientId);
+    const { filteredSeries: filteredGoldSourceSeries } = filterEconomyDataByTimeline(econ.turns, econ.goldSourceSeriesByClientId);
+    const { filteredSeries: filteredTroopSourceSeries } = filterEconomyDataByTimeline(econ.turns, econ.troopSourceSeriesByClientId);
     const labelByClientId = new Map(econ.players.map((p) => [p.clientID, p.displayName]));
     const colors = d3.schemeTableau10 || ["#60a5fa", "#fbbf24", "#34d399", "#a78bfa", "#fb7185", "#22c55e", "#f97316", "#e879f9", "#38bdf8", "#facc15"];
     const mkLines = (metric: string, ids: string[]) => (ids || []).map((cid, idx) => ({
@@ -828,11 +884,12 @@ function renderAll() {
         };
         for (let turnIdx = 0; turnIdx < filteredTurns.length; turnIdx++) {
           let total = 0;
-          if (econ.goldSourceSeriesByClientId[cid]) {
-            const sourceData = econ.goldSourceSeriesByClientId[cid];
+          if (filteredGoldSourceSeries && filteredGoldSourceSeries[cid]) {
+            const sourceData = filteredGoldSourceSeries[cid];
             for (const func in sourceData) {
-              if (filterFn(func) && sourceData[func][turnIdx] !== undefined) {
-                total += sourceData[func][turnIdx];
+              const v = sourceData[func]?.[turnIdx];
+              if (filterFn(func) && v !== undefined) {
+                total += v;
               }
             }
           }
@@ -856,12 +913,9 @@ function renderAll() {
     renderMultiLineChart("chart-gold-donations-received", filteredTurns, mkLines("receivedGoldDonations", econ.top.receivedGoldDonations), { valueFormatter: fmtGold });
     // Derive donation charts from the new sources/drains data
     if (econ.troopSourceSeriesByClientId && filteredTurns.length > 0) {
-      // Apply timeline filtering to troop source data
-      const { filteredSeries: filteredTroopSeries } = filterEconomyDataByTimeline(econ.turns, econ.troopSourceSeriesByClientId);
-
       // Sent donations: aggregate sentTroopDonation from drains (negative values, convert to positive)
-      const sentDonationLines = Object.keys(filteredTroopSeries).map((clientId, idx) => {
-        const series = filteredTroopSeries[clientId];
+      const sentDonationLines = Object.keys(filteredTroopSourceSeries || {}).map((clientId, idx) => {
+        const series = filteredTroopSourceSeries[clientId];
         const sentData = series['sentTroopDonation'] || [];
         return {
           id: clientId,
@@ -872,8 +926,8 @@ function renderAll() {
       }).filter(line => line.ys.some(y => y > 0)); // Only include clients with sent donations
 
       // Received donations: aggregate PlayerImpl.donateTroops from sources
-      const receivedDonationLines = Object.keys(filteredTroopSeries).map((clientId, idx) => {
-        const series = filteredTroopSeries[clientId];
+      const receivedDonationLines = Object.keys(filteredTroopSourceSeries || {}).map((clientId, idx) => {
+        const series = filteredTroopSourceSeries[clientId];
         const receivedData = series['PlayerImpl.donateTroops'] || [];
         return {
           id: clientId,
@@ -910,11 +964,10 @@ function renderAll() {
         color: colors[idx % colors.length],
         ys: filteredTurns.map((_, turnIdx) => {
           let total = 0;
-          for (const clientId of Object.keys(econ.goldSourceSeriesByClientId)) {
-            const series = econ.goldSourceSeriesByClientId[clientId][func];
-            if (series && series[turnIdx] !== undefined) {
-              total += series[turnIdx];
-            }
+          for (const clientId of Object.keys(filteredGoldSourceSeries || {})) {
+            const series = filteredGoldSourceSeries?.[clientId]?.[func];
+            const v = series?.[turnIdx];
+            if (v !== undefined) total += v;
           }
           return total;
         }),
@@ -940,11 +993,10 @@ function renderAll() {
         const color = colors[idx % colors.length];
         const ys = filteredTurns.map((_, turnIdx) => {
           let total = 0;
-          for (const clientId of Object.keys(econ.troopSourceSeriesByClientId)) {
-            const series = econ.troopSourceSeriesByClientId[clientId][func];
-            if (series && series[turnIdx] !== undefined) {
-              total += series[turnIdx];
-            }
+          for (const clientId of Object.keys(filteredTroopSourceSeries || {})) {
+            const series = filteredTroopSourceSeries?.[clientId]?.[func];
+            const v = series?.[turnIdx];
+            if (v !== undefined) total += v;
           }
           return total;
         });
